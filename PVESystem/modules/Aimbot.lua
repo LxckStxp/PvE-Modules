@@ -16,48 +16,76 @@ local Aimbot = {
 
 -- NPC caching
 local npcCache = {}
+local humanoidDirectories = {} -- Store directories with humanoids
+local lastFullScan = 0
 local lastCacheUpdate = 0
 local cacheCoroutine = nil
 
--- Async NPC cache update
-local function updateNPCCacheAsync()
-    if cacheCoroutine then return end -- Prevent overlapping updates
-    cacheCoroutine = coroutine.create(function()
-        local newCache = {}
-        local descendants = workspace:GetDescendants()
-        local batchSize = 100 -- Process 100 items per frame
-        for i = 1, #descendants, batchSize do
-            for j = i, math.min(i + batchSize - 1, #descendants) do
-                local humanoid = descendants[j]
+-- Initial full scan to find humanoid directories
+local function initialScanForDirectories()
+    humanoidDirectories = {}
+    local descendants = workspace:GetDescendants()
+    local batchSize = 100
+    for i = 1, #descendants, batchSize do
+        for j = i, math.min(i + batchSize - 1, #descendants) do
+            local obj = descendants[j]
+            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+                local dir = obj.Parent
+                if dir and not humanoidDirectories[dir] then
+                    humanoidDirectories[dir] = true
+                end
+            end
+        end
+        task.wait()
+    end
+end
+
+-- Update NPC cache from known directories
+local function updateNPCCacheFromDirectories()
+    local newCache = {}
+    for dir in pairs(humanoidDirectories) do
+        if dir.Parent then -- Ensure directory still exists
+            for _, humanoid in pairs(dir:GetDescendants()) do
                 if humanoid:IsA("Model") and humanoid:FindFirstChildOfClass("Humanoid") and humanoid ~= Player.Character then
                     local isPlayer = Players:GetPlayerFromCharacter(humanoid)
                     if not isPlayer and humanoid:FindFirstChildOfClass("Humanoid").Health > 0 then
                         local head = humanoid:FindFirstChild("Head") or humanoid.PrimaryPart or humanoid:FindFirstChildWhichIsA("BasePart")
-                        if head and (head.Position - Camera.CFrame.Position).Magnitude <= 100 then -- Limit to 100 studs
+                        if head and (head.Position - Camera.CFrame.Position).Magnitude <= 100 then
                             table.insert(newCache, humanoid)
                         end
                     end
                 end
             end
-            task.wait() -- Yield to next frame
         end
-        npcCache = newCache
-        lastCacheUpdate = tick()
+    end
+    npcCache = newCache
+    lastCacheUpdate = tick()
+end
+
+-- Async full rescan
+local function fullRescanAsync()
+    if cacheCoroutine then return end
+    cacheCoroutine = coroutine.create(function()
+        initialScanForDirectories()
+        updateNPCCacheFromDirectories()
+        lastFullScan = tick()
         cacheCoroutine = nil
-        -- print("NPC cache updated:", #npcCache, "NPCs found")
+        -- print("Full rescan completed:", #npcCache, "NPCs in", table.getn(humanoidDirectories), "directories")
     end)
     coroutine.resume(cacheCoroutine)
 end
 
--- Get cached NPCs, updating async if necessary
+-- Get cached NPCs, updating async if needed
 local function getNPCs()
-    if tick() - lastCacheUpdate > 0.5 and not cacheCoroutine then -- Update every 0.5s, only if not already updating
-        updateNPCCacheAsync()
+    if tick() - lastFullScan > 60 then -- Full rescan every 60 seconds
+        fullRescanAsync()
+    elseif tick() - lastCacheUpdate > 0.5 and not cacheCoroutine then -- Update directories every 0.5s
+        updateNPCCacheFromDirectories()
     end
     return npcCache
 end
 
--- Check line of sight efficiently
+-- Check line of sight
 local function hasLineOfSight(target)
     local head = target:FindFirstChild("Head") or target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
     if not head then return false end
@@ -71,13 +99,13 @@ local function hasLineOfSight(target)
     return not workspace:Raycast(rayOrigin, rayDirection, raycastParams)
 end
 
--- Find closest NPC efficiently
+-- Find closest NPC
 local function findClosestNPC()
     local mouse = UserInputService:GetMouseLocation()
     local ray = Camera:ScreenPointToRay(mouse.X, mouse.Y)
     
     local closestNPC, closestDistance = nil, math.huge
-    for _, npc in ipairs(getNPCs()) do -- Use ipairs for faster iteration
+    for _, npc in ipairs(getNPCs()) do
         local head = npc:FindFirstChild("Head") or npc.PrimaryPart or npc:FindFirstChildWhichIsA("BasePart")
         if head then
             local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
@@ -114,7 +142,9 @@ end
 
 -- Initialize aimbot
 function Aimbot.Initialize()
-    updateNPCCacheAsync() -- Initial async cache
+    initialScanForDirectories() -- Initial directory scan
+    updateNPCCacheFromDirectories() -- Initial cache from directories
+    lastFullScan = tick()
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed or not Aimbot.Enabled then return end
         if input.UserInputType == Aimbot.Settings.AimKey then
