@@ -14,18 +14,30 @@ local Aimbot = {
     }
 }
 
--- Utility function to get NPC models (non-player humanoids)
-local function getNPCs()
-    local npcs = {}
+-- NPC caching
+local npcCache = {}
+local lastCacheUpdate = 0
+
+-- Update NPC cache every 1 second
+local function updateNPCCache()
+    npcCache = {}
     for _, humanoid in pairs(workspace:GetDescendants()) do
         if humanoid:IsA("Model") and humanoid:FindFirstChildOfClass("Humanoid") and humanoid ~= Player.Character then
             local isPlayer = Players:GetPlayerFromCharacter(humanoid)
             if not isPlayer and humanoid:FindFirstChildOfClass("Humanoid").Health > 0 then
-                table.insert(npcs, humanoid)
+                table.insert(npcCache, humanoid)
             end
         end
     end
-    return npcs
+    lastCacheUpdate = tick()
+end
+
+-- Get cached NPCs, updating if necessary
+local function getNPCs()
+    if tick() - lastCacheUpdate > 1 then -- Update every 1 second
+        updateNPCCache()
+    end
+    return npcCache
 end
 
 -- Check if there's a clear line of sight to the target
@@ -92,6 +104,7 @@ end
 
 -- Handle input for aimbot
 function Aimbot.Initialize()
+    updateNPCCache() -- Initial cache population
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed or not Aimbot.Enabled then return end
         if input.UserInputType == Aimbot.Settings.AimKey then
