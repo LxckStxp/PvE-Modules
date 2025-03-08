@@ -15,88 +15,118 @@ local Aimbot = {
 }
 
 -- NPC caching
-local npcCache = {}
-local humanoidDirectories = {} -- Store directories with humanoids
-local lastFullScan = 0
-local lastCacheUpdate = 0
-local cacheCoroutine = nil
+local npcCache = {} -- Table of NPCs
+local npcMap = {} -- Map of NPC instances to track existence
+local distanceThreshold = 100 -- Only cache NPCs within 100 studs
 
--- Initial full scan to find humanoid directories
-local function initialScanForDirectories()
-    humanoidDirectories = {}
-    local descendants = workspace:GetDescendants()
-    local batchSize = 100
-    for i = 1, #descendants, batchSize do
-        for j = i, math.min(i + batchSize - 1, #descendants) do
-            local obj = descendants[j]
-            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
-                local dir = obj.Parent
-                if dir and not humanoidDirectories[dir] then
-                    humanoidDirectories[dir] = true
-                end
-            end
-        end
-        task.wait()
+-- Check if an object is an NPC
+local function isValidNPC(humanoid)
+    if not humanoid:IsA("Model") or humanoid == Player.Character then return false end
+    local hum = humanoid:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    return not Players:GetPlayerFromCharacter(humanoid)
+end
+
+-- Add NPC to cache
+local function addNPC(humanoid)
+    local head = humanoid:FindFirstChild("Head") or humanoid.PrimaryPart or humanoid:FindFirstChildWhichIsA("BasePart")
+    if head and (head.Position - Camera.CFrame.Position).Magnitude <= distanceThreshold and not npcMap[humanoid] then
+        table.insert(npcCache, humanoid)
+        npcMap[humanoid] = true
     end
 end
 
--- Update NPC cache from known directories
-local function updateNPCCacheFromDirectories()
-    local newCache = {}
-    for dir in pairs(humanoidDirectories) do
-        if dir.Parent then -- Ensure directory still exists
-            for _, humanoid in pairs(dir:GetDescendants()) do
-                if humanoid:IsA("Model") and humanoid:FindFirstChildOfClass("Humanoid") and humanoid ~= Player.Character then
-                    local isPlayer = Players:GetPlayerFromCharacter(humanoid)
-                    if not isPlayer and humanoid:FindFirstChildOfClass("Humanoid").Health > 0 then
-                        local head = humanoid:FindFirstChild("Head") or humanoid.PrimaryPart or humanoid:FindFirstChildWhichIsA("BasePart")
-                        if head and (head.Position - Camera.CFrame.Position).Magnitude <= 100 then
-                            table.insert(newCache, humanoid)
-                        end
-                    end
-                end
+-- Remove NPC from cache
+local function removeNPC(humanoid)
+    if npcMap[humanoid] then
+        for i, npc in ipairs(npcCache) do
+            if npc == humanoid then
+                table.remove(npcCache, i)
+                npcMap[humanoid] = nil
+                break
             end
         end
     end
-    npcCache = newCache
-    lastCacheUpdate = tick()
 end
 
--- Async full rescan
-local function fullRescanAsync()
-    if cacheCoroutine then return end
-    cacheCoroutine = coroutine.create(function()
-        initialScanForDirectories()
-        updateNPCCacheFromDirectories()
-        lastFullScan = tick()
-        cacheCoroutine = nil
-        -- print("Full rescan completed:", #npcCache, "NPCs in", table.getn(humanoidDirectories), "directories")
+-- Initial async scan
+local function initialScanAsync()
+    coroutine.wrap(function()
+        local descendants = workspace:GetDescendants()
+        local batchSize = 50 -- Smaller batch for less lag
+        for i = 1, #descendants, batchSize do
+            for j = i, math.min(i + batchSize - 1, #descendants) do
+                local obj = descendants[j]
+                if isValidNPC(obj) then
+                    addNPC(obj)
+                end
+            end
+            task.wait()
+        end
+        -- print("Initial NPC scan completed:", #npcCache, "NPCs found")
+    end)()
+end
+
+-- Dynamic NPC updates
+local function setupDynamicUpdates()
+    -- Add new NPCs
+    workspace.DescendantAdded:Connect(function(descendant)
+        if isValidNPC(descendant) then
+            addNPC(descendant)
+        end
     end)
-    coroutine.resume(cacheCoroutine)
+
+    -- Remove NPCs when they leave
+    workspace.DescendantRemoving:Connect(function(descendant)
+        if npcMap[descendant] then
+            removeNPC(descendant)
+        end
+    end)
+
+    -- Update on health changes (e.g., death)
+    RunService.Heartbeat:Connect(function()
+        for i = #npcCache, 1, -1 do -- Iterate backwards to safely remove
+            local npc = npcCache[i]
+            local hum = npc:FindFirstChildOfClass("Humanoid")
+            if not npc.Parent or not hum or hum.Health <= 0 or (npc:FindFirstChild("Head") or npc.PrimaryPart or npc:FindFirstChildWhichIsA("BasePart")).Position - Camera.CFrame.Position).Magnitude > distanceThreshold then
+                removeNPC(npc)
+            end
+        end
+    end)
 end
 
--- Get cached NPCs, updating async if needed
+-- Get cached NPCs
 local function getNPCs()
-    if tick() - lastFullScan > 60 then -- Full rescan every 60 seconds
-        fullRescanAsync()
-    elseif tick() - lastCacheUpdate > 0.5 and not cacheCoroutine then -- Update directories every 0.5s
-        updateNPCCacheFromDirectories()
-    end
     return npcCache
 end
 
--- Check line of sight
+-- Check line of sight (cached result per frame)
+local lastRaycastFrame = 0
+local raycastCache = {}
 local function hasLineOfSight(target)
+    local currentFrame = RunService.RenderStepped:Wait() -- Use frame time as key
+    if lastRaycastFrame ~= currentFrame then
+        raycastCache = {}
+        lastRaycastFrame = currentFrame
+    end
+
+    if raycastCache[target] ~= nil then return raycastCache[target] end
+
     local head = target:FindFirstChild("Head") or target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
-    if not head then return false end
+    if not head then
+        raycastCache[target] = false
+        return false
+    end
 
     local rayOrigin = Camera.CFrame.Position
-    local rayDirection = (head.Position - rayOrigin).Unit * 1000
+    local rayDirection = (head.Position - rayOrigin).Unit * distanceThreshold
     local raycastParams = RaycastParams.new()
     raycastParams.FilterDescendantsInstances = {Player.Character, target}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 
-    return not workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+    local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+    raycastCache[target] = not result
+    return raycastCache[target]
 end
 
 -- Find closest NPC
@@ -142,9 +172,8 @@ end
 
 -- Initialize aimbot
 function Aimbot.Initialize()
-    initialScanForDirectories() -- Initial directory scan
-    updateNPCCacheFromDirectories() -- Initial cache from directories
-    lastFullScan = tick()
+    initialScanAsync() -- One-time async scan
+    setupDynamicUpdates() -- Start event-driven updates
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed or not Aimbot.Enabled then return end
         if input.UserInputType == Aimbot.Settings.AimKey then
