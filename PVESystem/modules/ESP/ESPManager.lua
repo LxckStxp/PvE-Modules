@@ -42,9 +42,10 @@ return function(Config, Utilities, ESPObject, ESPConfig)
     
     function ESPManager.Initialize()
         local lastUpdate = 0
+        local updateInterval = ESPConfig.UpdateInterval or 0.2 -- Default to 0.2 if nil
         ESPManager.Connection = RunService.Heartbeat:Connect(function()
             local currentTime = tick()
-            if currentTime - lastUpdate >= ESPConfig.UpdateInterval then
+            if currentTime - lastUpdate >= updateInterval then
                 ESPManager.Update()
                 lastUpdate = currentTime
             end
