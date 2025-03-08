@@ -1,4 +1,4 @@
-local baseUrl = "https://raw.githubusercontent.com/LxckStxp/DeadRails/main/modules/"
+local baseUrl = "https://raw.githubusercontent.com/LxckStxp/PvE-Modules/main/PVESystem/modules/"
 
 local Config = loadstring(game:HttpGet(baseUrl .. "Config.lua"))()
 local Utilities = loadstring(game:HttpGet(baseUrl .. "Utilities.lua"))()
