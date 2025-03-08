@@ -11,14 +11,14 @@ return function(Config, Utilities, ESPConfig)
         highlight.Parent = game.CoreGui
         
         local billboard = Instance.new("BillboardGui")
-        billboard.Size = UDim2.new(0, 130, 0, espType == "Item" and 25 or 35)
-        billboard.StudsOffset = Vector3.new(0, 2.5, 0)
-        billboard.Adornee = object:IsA("Model") and (object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart")) or object
+        billboard.Size = UDim2.new(0, 130, 0, espType == "Item" and 25 or 50) -- Increased height for NPC health bar
+        billboard.StudsOffset = Vector3.new(0, 3.5, 0) -- Moved above head (was 2.5)
+        billboard.Adornee = object:IsA("Model") and (object:FindFirstChild("Head") or object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart")) or object
         billboard.AlwaysOnTop = true
         billboard.Parent = game.CoreGui
         
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, 0, espType == "Item" and 1 or 0.6, 0)
+        label.Size = UDim2.new(1, 0, espType == "Item" and 1 or 0.5, 0) -- Adjusted for NPC layout
         label.Position = UDim2.new(0, 0, 0, 0)
         label.BackgroundTransparency = 1
         label.TextSize = 14
@@ -28,10 +28,10 @@ return function(Config, Utilities, ESPConfig)
         label.Parent = billboard
         
         local healthBar, healthFill, healthBorder
-        if espType == "NPC" then -- Only NPCs get health bars
+        if espType == "NPC" then
             healthBar = Instance.new("Frame")
-            healthBar.Size = UDim2.new(0.9, 0, 0.15, 0)
-            healthBar.Position = UDim2.new(0.05, 0, 0.75, 0)
+            healthBar.Size = UDim2.new(0.9, 0, 0.3, 0) -- Increased height for visibility
+            healthBar.Position = UDim2.new(0.05, 0, 0.6, 0) -- Below name, above head
             healthBar.BackgroundTransparency = 1
             healthBar.Parent = billboard
             
