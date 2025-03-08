@@ -28,7 +28,22 @@ local function getNPCs()
     return npcs
 end
 
--- Find closest NPC to crosshair (excluding players)
+-- Check if there's a clear line of sight to the target
+local function hasLineOfSight(target)
+    local head = target:FindFirstChild("Head") or target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
+    if not head then return false end
+
+    local rayOrigin = Camera.CFrame.Position
+    local rayDirection = (head.Position - rayOrigin).Unit * 1000
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {Player.Character, target}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+    local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+    return not result -- No obstruction if result is nil
+end
+
+-- Find closest NPC to crosshair with line of sight
 local function findClosestNPC()
     local mouse = UserInputService:GetMouseLocation()
     local ray = Camera:ScreenPointToRay(mouse.X, mouse.Y)
@@ -37,26 +52,11 @@ local function findClosestNPC()
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 
     local closestNPC, closestDistance = nil, math.huge
-    local raycastResult = workspace:Raycast(ray.Origin, ray.Direction * 1000, raycastParams)
-    
-    if raycastResult and raycastResult.Instance then
-        local model = raycastResult.Instance:FindFirstAncestorOfClass("Model")
-        if model and model:FindFirstChildOfClass("Humanoid") and model ~= Player.Character then
-            local hum = model:FindFirstChildOfClass("Humanoid")
-            local isPlayer = Players:GetPlayerFromCharacter(model)
-            if hum and hum.Health > 0 and not isPlayer then
-                closestNPC = model
-                closestDistance = (Camera.CFrame.Position - raycastResult.Position).Magnitude
-            end
-        end
-    end
-
-    -- Fallback: Check all NPCs for closest to crosshair
     for _, npc in pairs(getNPCs()) do
         local head = npc:FindFirstChild("Head") or npc.PrimaryPart or npc:FindFirstChildWhichIsA("BasePart")
         if head then
             local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
-            if onScreen then
+            if onScreen and hasLineOfSight(npc) then
                 local distance = (Vector2.new(screenPos.X, screenPos.Y) - mouse).Magnitude
                 if distance < closestDistance then
                     closestNPC = npc
@@ -71,16 +71,22 @@ end
 
 -- Aim at target’s head or primary part instantly
 local function aimAtTarget()
-    if not Aimbot.Target or not (Aimbot.Target.PrimaryPart or Aimbot.Target:FindFirstChild("Head")) then return end
+    if not Aimbot.Target or not Aimbot.Target.Parent then
+        Aimbot.Target = findClosestNPC() -- Switch target if current one is gone
+        if not Aimbot.Target then return end
+    end
     
     local head = Aimbot.Target:FindFirstChild("Head") or Aimbot.Target.PrimaryPart
-    if not head then return end
+    if not head or not hasLineOfSight(Aimbot.Target) then
+        Aimbot.Target = findClosestNPC() -- Switch if no line of sight
+        if not Aimbot.Target then return end
+        head = Aimbot.Target:FindFirstChild("Head") or Aimbot.Target.PrimaryPart
+    end
     
-    local targetPos = head.Position -- Direct targeting, no offset
+    local targetPos = head.Position
     local lookVector = (targetPos - Camera.CFrame.Position).Unit
     local newCFrame = CFrame.new(Camera.CFrame.Position, Camera.CFrame.Position + lookVector)
     
-    -- Instant aim (no smoothing)
     Camera.CFrame = newCFrame
 end
 
