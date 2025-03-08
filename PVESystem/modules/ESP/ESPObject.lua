@@ -115,7 +115,14 @@ return function(Config, Utilities, ESPConfig)
                 self.Label.TextTransparency = fade
                 self.Label.TextStrokeTransparency = 0.2 + fade * 0.8
                 
-                local color = Config.Colors[self.Type]
+                local color
+                if self.Type == "NPC" then
+                    color = Config.Colors.NPC
+                else -- Item
+                    local part = self.Object:IsA("BasePart") and self.Object or (self.Object:IsA("Model") and (self.Object.PrimaryPart or self.Object:FindFirstChildWhichIsA("BasePart")))
+                    color = part and part.BrickColor and part.BrickColor.Color or Config.Colors.Default
+                end
+                
                 self.Highlight.FillColor = color
                 self.Highlight.OutlineColor = color:Lerp(Color3.fromRGB(255, 255, 255), 0.4)
                 
