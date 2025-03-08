@@ -1,0 +1,92 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Player = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local MiddleClick = {
+    Enabled = false, -- Controlled by UI
+    TrackedItems = {}, -- Store tracked items with their ESP instances
+    MaxSizeThreshold = 10, -- Studs; arbitrary threshold for "interactable" size
+}
+
+-- Check if a target is a humanoid
+local function isHumanoid(target)
+    local model = target:FindFirstAncestorOfClass("Model")
+    return model and model:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
+-- Check if an object is small enough to be interactable
+local function isInteractableSize(object)
+    local size = object:IsA("BasePart") and object.Size or (object:IsA("Model") and object:GetExtentsSize() or Vector3.new(0, 0, 0))
+    return size.Magnitude <= MiddleClick.MaxSizeThreshold
+end
+
+-- Find similar parts/models based on name and class
+local function findSimilarObjects(target)
+    local similar = {}
+    local targetName = target.Name
+    local targetClass = target.ClassName
+
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj ~= target and obj.Name == targetName and obj.ClassName == targetClass and isInteractableSize(obj) then
+            table.insert(similar, obj)
+        end
+    end
+    return similar
+end
+
+-- Add an object to ESP tracking
+local function addToESP(object, espObjectModule)
+    if not MiddleClick.TrackedItems[object] and not isHumanoid(object) and isInteractableSize(object) then
+        local esp = espObjectModule.Create(object, "Item")
+        MiddleClick.TrackedItems[object] = esp
+        esp:Update()
+    end
+end
+
+-- Initialize middle-click detection and dynamic ESP
+function MiddleClick.Initialize(espObjectModule)
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed or not MiddleClick.Enabled then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton3 then -- Middle click
+            local mouse = Player:GetMouse()
+            local target = mouse.Target
+            if not target or isHumanoid(target) then return end
+
+            -- Check size and add to ESP if valid
+            if isInteractableSize(target) then
+                -- Find and track similar objects
+                local similarObjects = findSimilarObjects(target)
+                addToESP(target, espObjectModule)
+                for _, obj in pairs(similarObjects) do
+                    addToESP(obj, espObjectModule)
+                end
+                print("Tracking", target.Name, "and", #similarObjects, "similar objects")
+            else
+                print("Object too large to track:", target.Name)
+            end
+        end
+    end)
+
+    -- Update tracked items
+    game:GetService("RunService").Heartbeat:Connect(function()
+        for obj, esp in pairs(MiddleClick.TrackedItems) do
+            if obj.Parent then
+                esp:Update()
+            else
+                esp:Destroy()
+                MiddleClick.TrackedItems[obj] = nil
+            end
+        end
+    end)
+end
+
+-- Cleanup function to remove all tracked items
+function MiddleClick.Cleanup()
+    for _, esp in pairs(MiddleClick.TrackedItems) do
+        esp:Destroy()
+    end
+    MiddleClick.TrackedItems = {}
+end
+
+return MiddleClick
