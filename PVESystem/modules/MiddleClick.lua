@@ -1,19 +1,12 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local Player = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
 
 local MiddleClick = {
     Enabled = false, -- Controlled by UI
     TrackedItems = {}, -- Store tracked items with their ESP instances
-    MaxSizeThreshold = 10, -- Studs; arbitrary threshold for "interactable" size
+    MaxSizeThreshold = 10, -- Studs; threshold for "interactable" size
 }
-
--- Check if a target is a humanoid
-local function isHumanoid(target)
-    local model = target:FindFirstAncestorOfClass("Model")
-    return model and model:FindFirstChildOfClass("Humanoid") ~= nil
-end
 
 -- Check if an object is small enough to be interactable
 local function isInteractableSize(object)
@@ -21,50 +14,38 @@ local function isInteractableSize(object)
     return size.Magnitude <= MiddleClick.MaxSizeThreshold
 end
 
--- Find similar parts/models based on name and class
-local function findSimilarObjects(target)
-    local similar = {}
-    local targetName = target.Name
-    local targetClass = target.ClassName
-
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj ~= target and obj.Name == targetName and obj.ClassName == targetClass and isInteractableSize(obj) then
-            table.insert(similar, obj)
-        end
+-- Toggle tracking for an object
+local function toggleTracking(object, espObjectModule)
+    if not isInteractableSize(object) then
+        print("Object too large to track:", object.Name)
+        return
     end
-    return similar
-end
 
--- Add an object to ESP tracking
-local function addToESP(object, espObjectModule)
-    if not MiddleClick.TrackedItems[object] and not isHumanoid(object) and isInteractableSize(object) then
+    if MiddleClick.TrackedItems[object] then
+        -- Remove from tracking if already tracked
+        MiddleClick.TrackedItems[object]:Destroy()
+        MiddleClick.TrackedItems[object] = nil
+        print("Stopped tracking:", object.Name)
+    else
+        -- Add to tracking if not already tracked
         local esp = espObjectModule.Create(object, "Item")
         MiddleClick.TrackedItems[object] = esp
         esp:Update()
+        print("Started tracking:", object.Name)
     end
 end
 
--- Initialize middle-click detection and dynamic ESP
+-- Initialize middle-click detection
 function MiddleClick.Initialize(espObjectModule)
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed or not MiddleClick.Enabled then return end
         if input.UserInputType == Enum.UserInputType.MouseButton3 then -- Middle click
             local mouse = Player:GetMouse()
             local target = mouse.Target
-            if not target or isHumanoid(target) then return end
+            if not target then return end
 
-            -- Check size and add to ESP if valid
-            if isInteractableSize(target) then
-                -- Find and track similar objects
-                local similarObjects = findSimilarObjects(target)
-                addToESP(target, espObjectModule)
-                for _, obj in pairs(similarObjects) do
-                    addToESP(obj, espObjectModule)
-                end
-                print("Tracking", target.Name, "and", #similarObjects, "similar objects")
-            else
-                print("Object too large to track:", target.Name)
-            end
+            -- Toggle tracking for the target
+            toggleTracking(target, espObjectModule)
         end
     end)
 
