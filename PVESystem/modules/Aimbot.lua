@@ -18,7 +18,7 @@ local Aimbot = {
 local npcCache = {}
 local lastCacheUpdate = 0
 
--- Update NPC cache every 1 second
+-- Update NPC cache
 local function updateNPCCache()
     npcCache = {}
     for _, humanoid in pairs(workspace:GetDescendants()) do
@@ -30,11 +30,12 @@ local function updateNPCCache()
         end
     end
     lastCacheUpdate = tick()
+    print("NPC cache updated:", #npcCache, "NPCs found")
 end
 
 -- Get cached NPCs, updating if necessary
 local function getNPCs()
-    if tick() - lastCacheUpdate > 1 then -- Update every 1 second
+    if tick() - lastCacheUpdate > 0.5 then -- Update every 0.5 seconds
         updateNPCCache()
     end
     return npcCache
@@ -77,7 +78,11 @@ local function findClosestNPC()
             end
         end
     end
-    
+    if closestNPC then
+        print("Found closest NPC:", closestNPC.Name)
+    else
+        print("No visible NPC found")
+    end
     return closestNPC
 end
 
@@ -108,9 +113,13 @@ function Aimbot.Initialize()
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed or not Aimbot.Enabled then return end
         if input.UserInputType == Aimbot.Settings.AimKey then
+            print("Aimbot activated")
             Aimbot.Aiming = true
             Aimbot.Target = findClosestNPC()
             if Aimbot.Target then
+                if Aimbot.RenderConnection then
+                    Aimbot.RenderConnection:Disconnect()
+                end
                 Aimbot.RenderConnection = RunService.RenderStepped:Connect(aimAtTarget)
             end
         end
@@ -119,6 +128,7 @@ function Aimbot.Initialize()
     UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if gameProcessed or not Aimbot.Enabled then return end
         if input.UserInputType == Aimbot.Settings.AimKey then
+            print("Aimbot deactivated")
             Aimbot.Aiming = false
             Aimbot.Target = nil
             if Aimbot.RenderConnection then
