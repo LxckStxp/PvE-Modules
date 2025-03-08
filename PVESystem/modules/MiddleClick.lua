@@ -14,24 +14,53 @@ local function isInteractableSize(object)
     return size.Magnitude <= MiddleClick.MaxSizeThreshold
 end
 
--- Toggle tracking for an object
+-- Find all objects with the same name
+local function findMatchingObjects(targetName)
+    local matches = {}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj.Name == targetName and isInteractableSize(obj) then
+            table.insert(matches, obj)
+        end
+    end
+    return matches
+end
+
+-- Toggle tracking for an object and its matches
 local function toggleTracking(object, espObjectModule)
     if not isInteractableSize(object) then
         print("Object too large to track:", object.Name)
         return
     end
 
-    if MiddleClick.TrackedItems[object] then
-        -- Remove from tracking if already tracked
-        MiddleClick.TrackedItems[object]:Destroy()
-        MiddleClick.TrackedItems[object] = nil
-        print("Stopped tracking:", object.Name)
+    local targetName = object.Name
+    local matches = findMatchingObjects(targetName)
+    
+    -- If any match is already tracked, remove all matches
+    local isTracked = false
+    for _, match in pairs(matches) do
+        if MiddleClick.TrackedItems[match] then
+            isTracked = true
+            break
+        end
+    end
+
+    if isTracked then
+        for _, match in pairs(matches) do
+            if MiddleClick.TrackedItems[match] then
+                MiddleClick.TrackedItems[match]:Destroy()
+                MiddleClick.TrackedItems[match] = nil
+            end
+        end
+        print("Stopped tracking all:", targetName)
     else
-        -- Add to tracking if not already tracked
-        local esp = espObjectModule.Create(object, "Item")
-        MiddleClick.TrackedItems[object] = esp
-        esp:Update()
-        print("Started tracking:", object.Name)
+        for _, match in pairs(matches) do
+            if not MiddleClick.TrackedItems[match] then
+                local esp = espObjectModule.Create(match, "Item")
+                MiddleClick.TrackedItems[match] = esp
+                esp:Update()
+            end
+        end
+        print("Started tracking all:", targetName, "(", #matches, "items)")
     end
 end
 
@@ -44,7 +73,7 @@ function MiddleClick.Initialize(espObjectModule)
             local target = mouse.Target
             if not target then return end
 
-            -- Toggle tracking for the target
+            -- Toggle tracking for the target and all matching items
             toggleTracking(target, espObjectModule)
         end
     end)
